@@ -47,7 +47,6 @@ func (s *Storage) Set(ctx context.Context, key, value string) error {
 func (s *Storage) Get(ctx context.Context, key string) (string, error) {
 	result, ok := s.engine.Get(ctx, key)
 	if !ok {
-		s.logger.Warn("no such key", zap.String("key", key))
 		return "", ErrorNotFound
 	}
 	return result, nil

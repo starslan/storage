@@ -3,6 +3,7 @@ package parser
 import (
 	"storage/internal/database/compute"
 	"strings"
+	"unicode/utf8"
 
 	"go.uber.org/zap"
 )
@@ -20,7 +21,7 @@ func NewParser(logger *zap.Logger, maxQueryLength int) *Parser {
 }
 
 func (p *Parser) Parse(queryStr string) (compute.Query, error) {
-	if len(queryStr) > p.maxQueryLength {
+	if utf8.RuneCountInString(queryStr) > p.maxQueryLength {
 		p.logger.Info("query exceeds maximum length",
 			zap.String("query", queryStr), zap.Int("max_length", p.maxQueryLength))
 		return compute.Query{}, compute.ErrQueryTooLong
@@ -35,13 +36,13 @@ func (p *Parser) Parse(queryStr string) (compute.Query, error) {
 	command := tokens[0]
 	spec, ok := compute.CommandSpecList[command]
 	if !ok {
-		p.logger.Debug("invalid command", zap.String("query", queryStr))
+		p.logger.Warn("invalid command", zap.String("query", queryStr))
 		return compute.Query{}, compute.ErrInvalidCommand
 	}
 
 	query := compute.NewQuery(spec.ID, tokens[1:])
 	if len(query.Arguments()) != spec.ArgCount {
-		p.logger.Debug("invalid arguments for query", zap.String("query", queryStr))
+		p.logger.Warn("invalid arguments for query", zap.String("query", queryStr))
 		return compute.Query{}, compute.ErrInvalidArguments
 	}
 

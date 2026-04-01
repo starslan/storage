@@ -10,6 +10,7 @@ import (
 	"storage/internal/database/compute/parser"
 	"storage/internal/database/storage"
 	"storage/internal/database/storage/engine/memory"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -23,22 +24,17 @@ func main() {
 	logger.Info("Application started")
 
 	psr := parser.NewParser(logger, 300)
-	cmt, err := compute.NewCompute(logger, psr)
+	cmt, err := compute.NewCompute(psr)
 	if err != nil {
-		logger.Error("Failed to create compute", zap.Error(err))
+		logger.Fatal("Failed to create compute", zap.Error(err))
 	}
-	eng, err := memory.NewEngine(logger)
+	str, err := storage.NewStorage(memory.NewEngine(), logger)
 	if err != nil {
-		logger.Error("Failed to create engine", zap.Error(err))
-	}
-	str, err := storage.NewStorage(eng, logger)
-	if err != nil {
-		logger.Error("Failed to create storage", zap.Error(err))
+		logger.Fatal("Failed to create storage", zap.Error(err))
 	}
 	DB, err := database.NewDB(logger, cmt, str)
-	fmt.Println(DB)
 	if err != nil {
-		logger.Error("Failed to create database", zap.Error(err))
+		logger.Fatal("Failed to create database", zap.Error(err))
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
@@ -50,12 +46,17 @@ func main() {
 		request := scanner.Text()
 
 		logger.Debug("Request:", zap.String("request", request))
+
+		start := time.Now()
 		result := DB.HandleQuery(ctx, request)
-		logger.Debug("Result:", zap.String("result", result))
+		duration := time.Since(start)
+		logger.Debug("Result:",
+			zap.String("result", result), zap.Int64("duration_ms", duration.Milliseconds()))
 		fmt.Println(result)
 	}
 
 	if err := scanner.Err(); err != nil {
 		logger.Error("Error I/O scanner", zap.Error(err))
 	}
+	logger.Info("Application finished")
 }

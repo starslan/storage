@@ -2,28 +2,18 @@ package memory
 
 import (
 	"context"
-	"errors"
-
-	"go.uber.org/zap"
 )
 
 type Engine struct {
-	data   *HashTable
-	logger *zap.Logger
+	data *HashTable
 }
 
-func NewEngine(logger *zap.Logger) (*Engine, error) {
-	if logger == nil {
-		return nil, errors.New("logger is invalid")
-	}
+func NewEngine() *Engine {
 
 	engine := &Engine{
-		logger: logger,
+		data: NewHashTable(),
 	}
-
-	engine.data = NewHashTable()
-
-	return engine, nil
+	return engine
 }
 func (e *Engine) Get(_ context.Context, key string) (string, bool) {
 	result, ok := e.data.Get(key)

@@ -12,10 +12,10 @@ func NewQuery(commandID int, arguments []string) Query {
 	}
 }
 
-func (c *Query) CommandID() int {
+func (c Query) CommandID() int {
 	return c.commandID
 }
 
-func (c *Query) Arguments() []string {
+func (c Query) Arguments() []string {
 	return c.arguments
 }

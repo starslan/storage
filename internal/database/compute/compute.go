@@ -2,8 +2,6 @@ package compute
 
 import (
 	"errors"
-
-	"go.uber.org/zap"
 )
 
 var (
@@ -17,20 +15,14 @@ type Parser interface {
 	Parse(queryStr string) (Query, error)
 }
 type Compute struct {
-	logger *zap.Logger
 	parser Parser
 }
 
-func NewCompute(logger *zap.Logger, parser Parser) (*Compute, error) {
-	if logger == nil {
-		return nil, errors.New("logger is invalid")
-	}
-
+func NewCompute(parser Parser) (*Compute, error) {
 	if parser == nil {
-		return nil, errors.New("logger is invalid")
+		return nil, errors.New("parser is invalid")
 	}
 	return &Compute{
-		logger: logger,
 		parser: parser,
 	}, nil
 }
