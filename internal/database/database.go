@@ -22,20 +22,20 @@ type Storage interface {
 
 type DB struct {
 	logger  *zap.Logger
-	parser  Compute
+	compute Compute
 	storage Storage
 }
 
 func NewDB(logger *zap.Logger, parser Compute, storage Storage) (*DB, error) {
 	return &DB{
 		logger:  logger,
-		parser:  parser,
+		compute: parser,
 		storage: storage,
 	}, nil
 }
 
 func (d *DB) HandleQuery(ctx context.Context, queryStr string) string {
-	query, err := d.parser.Parse(queryStr)
+	query, err := d.compute.Parse(queryStr)
 	if err != nil {
 		d.logger.Error("Failed to parse query", zap.Error(err))
 		return fmt.Sprintf("Failed to parse query: %s", queryStr)

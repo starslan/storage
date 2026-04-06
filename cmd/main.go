@@ -5,12 +5,12 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"storage/internal/config"
 	"storage/internal/database"
 	"storage/internal/database/compute"
 	"storage/internal/database/compute/parser"
 	"storage/internal/database/storage"
 	"storage/internal/database/storage/engine/memory"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -18,6 +18,12 @@ import (
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	cfg, err := config.LoadConfig("config.yaml")
+	if err != nil {
+		panic(fmt.Sprintf("Failed to load config: %v", err))
+	}
+
 	logger, _ := zap.NewProduction()
 	defer logger.Sync()
 
@@ -28,7 +34,11 @@ func main() {
 	if err != nil {
 		logger.Fatal("Failed to create compute", zap.Error(err))
 	}
-	str, err := storage.NewStorage(memory.NewEngine(), logger)
+	engine, err := memory.NewEngine(&cfg.Engine)
+	if err != nil {
+		logger.Fatal("Failed to create engine", zap.Error(err))
+	}
+	str, err := storage.NewStorage(engine, logger)
 	if err != nil {
 		logger.Fatal("Failed to create storage", zap.Error(err))
 	}
@@ -47,11 +57,9 @@ func main() {
 
 		logger.Debug("Request:", zap.String("request", request))
 
-		start := time.Now()
 		result := DB.HandleQuery(ctx, request)
-		duration := time.Since(start)
-		logger.Debug("Result:",
-			zap.String("result", result), zap.Int64("duration_ms", duration.Milliseconds()))
+
+		logger.Debug("Result:", zap.String("result", result))
 		fmt.Println(result)
 	}
 
