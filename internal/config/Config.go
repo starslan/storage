@@ -12,6 +12,7 @@ type Config struct {
 	Network NetworkConfig `yaml:"network"`
 	Engine  EngineConfig  `yaml:"engine"`
 	Parser  ParserConfig  `yaml:"parse"`
+	Logger  LoggerConfig  `yaml:"logging"`
 }
 
 type NetworkConfig struct {
@@ -27,6 +28,11 @@ type EngineConfig struct {
 
 type ParserConfig struct {
 	MaxQueryLength int `yaml:"max_query_length" default:"200"`
+}
+
+type LoggerConfig struct {
+	Level  string `yaml:"level" default:"info"`
+	Output string `yaml:"output" default:"stdout"`
 }
 
 func LoadConfig(configPath string) (*Config, error) {
