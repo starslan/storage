@@ -8,3 +8,5 @@ network:
 logging:
   level: "info"
   output: "/log/output.log"
+parser:
+  max_query_length: 300

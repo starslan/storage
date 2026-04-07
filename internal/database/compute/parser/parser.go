@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"storage/internal/config"
 	"storage/internal/database/compute"
 	"strings"
 	"unicode/utf8"
@@ -13,9 +14,9 @@ type Parser struct {
 	maxQueryLength int
 }
 
-func NewParser(logger *zap.Logger, maxQueryLength int) *Parser {
+func NewParser(logger *zap.Logger, cfg config.ParserConfig) *Parser {
 	return &Parser{
-		maxQueryLength: maxQueryLength,
+		maxQueryLength: cfg.MaxQueryLength,
 		logger:         logger,
 	}
 }

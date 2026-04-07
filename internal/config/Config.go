@@ -1,21 +1,17 @@
 package config
 
 import (
+	"flag"
 	"os"
-	"sync"
 
 	"github.com/creasty/defaults"
 	"gopkg.in/yaml.v3"
 )
 
-var (
-	instance *Config
-	once     sync.Once
-)
-
 type Config struct {
 	Network NetworkConfig `yaml:"network"`
 	Engine  EngineConfig  `yaml:"engine"`
+	Parser  ParserConfig  `yaml:"parse"`
 }
 
 type NetworkConfig struct {
@@ -29,27 +25,48 @@ type EngineConfig struct {
 	Type string `yaml:"type" default:"in_memory"`
 }
 
+type ParserConfig struct {
+	MaxQueryLength int `yaml:"max_query_length" default:"200"`
+}
+
 func LoadConfig(configPath string) (*Config, error) {
-	var err error
-	once.Do(func() {
-		var cfg Config
-		if defaultsErr := defaults.Set(&cfg); defaultsErr != nil {
-			err = defaultsErr
-			return
-		}
-		data, readErr := os.ReadFile(configPath)
-		if readErr != nil {
-			err = readErr
-			return
-		}
+	var cfg Config
 
-		if unmarshalErr := yaml.Unmarshal(data, &cfg); unmarshalErr != nil {
-			err = unmarshalErr
-			return
-		}
+	if err := defaults.Set(&cfg); err != nil {
+		return nil, err
+	}
 
-		instance = &cfg
-	})
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, err
+	}
 
-	return instance, err
+	if err := yaml.Unmarshal(data, &cfg); err != nil {
+		return nil, err
+	}
+
+	return &cfg, nil
+}
+
+func ApplyArguments(cfg *Config) {
+	address := flag.String("address", "", "network address")
+	maxConn := flag.Int("max-connections", 0, "max connections")
+	maxMessageSize := flag.String("max_message_size", "", "max message size")
+	idleTimeout := flag.String("idle_timeout", "", "idle timeout TCP")
+
+	flag.Parse()
+
+	if *address != "" {
+		cfg.Network.Address = *address
+	}
+	if *maxConn != 0 {
+		cfg.Network.MaxConnections = *maxConn
+	}
+	if *maxMessageSize != "" {
+		cfg.Network.MaxMessageSize = *maxMessageSize
+	}
+
+	if *idleTimeout != "" {
+		cfg.Network.MaxMessageSize = *maxMessageSize
+	}
 }
