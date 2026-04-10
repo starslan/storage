@@ -73,6 +73,6 @@ func ApplyArguments(cfg *Config) {
 	}
 
 	if *idleTimeout != "" {
-		cfg.Network.MaxMessageSize = *maxMessageSize
+		cfg.Network.IdleTimeout = *idleTimeout
 	}
 }

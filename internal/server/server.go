@@ -7,6 +7,8 @@ import (
 	"storage/internal/app"
 	"storage/internal/config"
 	"storage/internal/semafor"
+	"strconv"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
@@ -72,13 +74,19 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 
 	s.logger.Info("Client connected:", zap.String("remote addr", conn.RemoteAddr().String()))
-
+	maxPageSize := ParseSize(s.cfg.MaxMessageSize)
 	reader := bufio.NewReader(conn)
 
 	for {
 		msg, err := reader.ReadString('\n')
 		if err != nil {
 			s.logger.Info("Client disconnected:", zap.Error(err))
+			return
+		}
+
+		if len(msg) > maxPageSize {
+			s.logger.Warn("Message too large")
+			_, _ = conn.Write([]byte("Message too large\n"))
 			return
 		}
 
@@ -94,4 +102,21 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 
 func (s *Server) Stop() error {
 	return s.listener.Close()
+}
+
+func ParseSize(s string) int {
+	s = strings.ToUpper(strings.TrimSpace(s))
+
+	multiplier := 1
+	switch {
+	case strings.HasSuffix(s, "KB"):
+		multiplier = 1024
+		s = strings.TrimSuffix(s, "KB")
+	case strings.HasSuffix(s, "MB"):
+		multiplier = 1024 * 1024
+		s = strings.TrimSuffix(s, "MB")
+	}
+
+	n, _ := strconv.Atoi(s)
+	return n * multiplier
 }
