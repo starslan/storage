@@ -7,6 +7,7 @@ import (
 	"os"
 	"storage/internal/app"
 	"storage/internal/config"
+	"storage/internal/logger"
 
 	"go.uber.org/zap"
 )
@@ -23,14 +24,16 @@ func main() {
 
 	fmt.Println(cfg)
 
-	logger, _ := zap.NewProduction()
+	logger, err := logger.NewLogger(cfg.Logger)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to load config: %v", err))
+	}
 	defer logger.Sync()
 
 	logger.Info("Application started")
 	logger.Info("Config ", zap.Any("cfg", cfg))
 
-	app, err := app.NewApp(cfg)
-
+	app, err := app.NewApp(cfg, logger)
 	if err != nil {
 		logger.Fatal("Failed to start application", zap.Error(err))
 	}

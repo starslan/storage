@@ -7,7 +7,6 @@ import (
 	"storage/internal/database/compute/parser"
 	"storage/internal/database/storage"
 	"storage/internal/database/storage/engine/memory"
-	log "storage/internal/logger"
 
 	"go.uber.org/zap"
 )
@@ -17,12 +16,7 @@ type App struct {
 	Logger *zap.Logger
 }
 
-func NewApp(cfg *config.Config) (*App, error) {
-
-	logger, err := log.NewLogger(cfg.Logger)
-	if err != nil {
-		return nil, err
-	}
+func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 
 	psr := parser.NewParser(logger, cfg.Parser)
 	cmt, err := compute.NewCompute(psr)

@@ -14,20 +14,22 @@ func NewLogger(cfg config.LoggerConfig) (*zap.Logger, error) {
 	level := zapcore.InfoLevel
 
 	if err := level.UnmarshalText([]byte(cfg.Level)); err != nil {
-		fmt.Println(err)
+		return nil, err
 	}
 
 	outputPaths := []string{"stdout"}
-	if cfg.Output != "" && cfg.Output != "stdout" && cfg.Output != "stderr" {
-		// Создаем директорию для файла лога
+	if cfg.Output == "stdout" || cfg.Output == "stderr" {
+		outputPaths = []string{cfg.Output}
+	} else {
 		dir := filepath.Dir(cfg.Output)
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("failed to create log directory: %w", err)
 		}
 		outputPaths = append([]string{cfg.Output}, outputPaths...)
 	}
+
 	zapCfg := zap.Config{
-		OutputPaths: []string{cfg.Output, "stdout"},
+		OutputPaths: outputPaths,
 		Level:       zap.NewAtomicLevelAt(level),
 		Encoding:    "json",
 	}
