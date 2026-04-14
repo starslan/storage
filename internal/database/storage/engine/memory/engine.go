@@ -2,18 +2,23 @@ package memory
 
 import (
 	"context"
+	"errors"
+	"storage/internal/config"
 )
 
 type Engine struct {
 	data *HashTable
 }
 
-func NewEngine() *Engine {
-
-	engine := &Engine{
-		data: NewHashTable(),
+func NewEngine(config *config.EngineConfig) (*Engine, error) {
+	switch config.Type {
+	case "in_memory":
+		return &Engine{
+			data: NewHashTable(),
+		}, nil
+	default:
+		return nil, errors.New("engine not found")
 	}
-	return engine
 }
 func (e *Engine) Get(_ context.Context, key string) (string, bool) {
 	result, ok := e.data.Get(key)

@@ -2,6 +2,7 @@ package tests
 
 import (
 	"errors"
+	"storage/internal/config"
 	"storage/internal/database/compute"
 	parserpkg "storage/internal/database/compute/parser"
 	"strings"
@@ -14,7 +15,8 @@ func TestParserParse_TooLongQuery(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop()
-	p := parserpkg.NewParser(logger, 10)
+	parseConfig := config.ParserConfig{MaxQueryLength: 10}
+	p := parserpkg.NewParser(logger, parseConfig)
 
 	long := strings.Repeat("a", 11)
 	_, err := p.Parse(long)
@@ -27,7 +29,8 @@ func TestParserParse_InvalidQuery_Empty(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop()
-	p := parserpkg.NewParser(logger, 10)
+	parseConfig := config.ParserConfig{MaxQueryLength: 10}
+	p := parserpkg.NewParser(logger, parseConfig)
 
 	_, err := p.Parse("")
 	if !errors.Is(err, compute.ErrInvalidQuery) {
@@ -39,7 +42,8 @@ func TestParserParse_InvalidQuery_OnlySpaces(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop()
-	p := parserpkg.NewParser(logger, 10)
+	parseConfig := config.ParserConfig{MaxQueryLength: 10}
+	p := parserpkg.NewParser(logger, parseConfig)
 
 	_, err := p.Parse("   \t  ")
 	if !errors.Is(err, compute.ErrInvalidQuery) {
@@ -51,7 +55,8 @@ func TestParserParse_InvalidCommand(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop()
-	p := parserpkg.NewParser(logger, 100)
+	parseConfig := config.ParserConfig{MaxQueryLength: 100}
+	p := parserpkg.NewParser(logger, parseConfig)
 
 	_, err := p.Parse("FOO bar")
 	if !errors.Is(err, compute.ErrInvalidCommand) {
@@ -63,7 +68,8 @@ func TestParserParse_InvalidArguments(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop()
-	p := parserpkg.NewParser(logger, 100)
+	parseConfig := config.ParserConfig{MaxQueryLength: 100}
+	p := parserpkg.NewParser(logger, parseConfig)
 
 	_, err := p.Parse("SET keyOnly")
 	if !errors.Is(err, compute.ErrInvalidArguments) {
@@ -75,7 +81,8 @@ func TestParserParse_ValidSET(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop()
-	p := parserpkg.NewParser(logger, 100)
+	parseConfig := config.ParserConfig{MaxQueryLength: 100}
+	p := parserpkg.NewParser(logger, parseConfig)
 
 	q, err := p.Parse("SET key value")
 	if err != nil {
@@ -96,7 +103,8 @@ func TestParserParse_ValidGET(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop()
-	p := parserpkg.NewParser(logger, 100)
+	parseConfig := config.ParserConfig{MaxQueryLength: 100}
+	p := parserpkg.NewParser(logger, parseConfig)
 
 	q, err := p.Parse("GET mykey")
 	if err != nil {
@@ -116,7 +124,8 @@ func TestParserParse_ValidDEL(t *testing.T) {
 	t.Parallel()
 
 	logger := zap.NewNop()
-	p := parserpkg.NewParser(logger, 100)
+	parseConfig := config.ParserConfig{MaxQueryLength: 100}
+	p := parserpkg.NewParser(logger, parseConfig)
 
 	q, err := p.Parse("DEL k")
 	if err != nil {
