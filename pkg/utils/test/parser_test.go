@@ -1,7 +1,7 @@
 package test
 
 import (
-	"storage/internal/server"
+	"storage/pkg/utils"
 	"testing"
 )
 
@@ -17,7 +17,7 @@ func TestParseSize(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		got := server.ParseSize(tt.input)
+		got := utils.ParseSize(tt.input)
 		if got != tt.want {
 			t.Errorf("parseSize(%s) = %d; want %d", tt.input, got, tt.want)
 		}

@@ -7,8 +7,7 @@ import (
 	"storage/internal/app"
 	"storage/internal/config"
 	"storage/internal/semafor"
-	"strconv"
-	"strings"
+	"storage/pkg/utils"
 	"time"
 
 	"go.uber.org/zap"
@@ -19,7 +18,7 @@ type Server struct {
 	listener net.Listener
 	cfg      config.NetworkConfig
 	logger   *zap.Logger
-	sem      *semafor.Sem
+	semafor  *semafor.Semafor
 }
 
 func NewServer(app *app.App, cfg config.NetworkConfig) (*Server, error) {
@@ -33,7 +32,7 @@ func NewServer(app *app.App, cfg config.NetworkConfig) (*Server, error) {
 		listener: ln,
 		cfg:      cfg,
 		logger:   app.Logger,
-		sem:      semafor.NewSem(cfg),
+		semafor:  semafor.NewSemafor(cfg),
 	}, nil
 }
 
@@ -46,7 +45,7 @@ func (s *Server) Start(ctx context.Context) error {
 			s.logger.Error("Server accept error", zap.Error(err))
 		}
 
-		if !s.sem.TryAcquire() {
+		if !s.semafor.TryAcquire() {
 			s.logger.Warn("Connection limit exceeded")
 
 			_, _ = conn.Write([]byte("Too many connections, try again later\n"))
@@ -63,8 +62,13 @@ func (s *Server) Start(ctx context.Context) error {
 		}
 		connCtx, cancel := context.WithCancel(ctx)
 		go func() {
-			defer cancel()
-			defer s.sem.Release()
+			defer func() {
+				if err := recover(); err != nil {
+					s.logger.Warn("Recovered from panic", zap.Any("error", err))
+				}
+				s.semafor.Release()
+				cancel()
+			}()
 			s.handleConnection(connCtx, conn)
 		}()
 	}
@@ -74,7 +78,7 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 
 	s.logger.Info("Client connected:", zap.String("remote addr", conn.RemoteAddr().String()))
-	maxPageSize := ParseSize(s.cfg.MaxMessageSize)
+	maxPageSize := utils.ParseSize(s.cfg.MaxMessageSize)
 	reader := bufio.NewReader(conn)
 
 	for {
@@ -102,21 +106,4 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 
 func (s *Server) Stop() error {
 	return s.listener.Close()
-}
-
-func ParseSize(s string) int {
-	s = strings.ToUpper(strings.TrimSpace(s))
-
-	multiplier := 1
-	switch {
-	case strings.HasSuffix(s, "KB"):
-		multiplier = 1024
-		s = strings.TrimSuffix(s, "KB")
-	case strings.HasSuffix(s, "MB"):
-		multiplier = 1024 * 1024
-		s = strings.TrimSuffix(s, "MB")
-	}
-
-	n, _ := strconv.Atoi(s)
-	return n * multiplier
 }

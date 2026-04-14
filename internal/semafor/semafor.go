@@ -5,20 +5,20 @@ import (
 	"sync"
 )
 
-type Sem struct {
+type Semafor struct {
 	count int
 	max   int
 	cond  *sync.Cond
 }
 
-func NewSem(cfg config.NetworkConfig) *Sem {
-	return &Sem{
+func NewSemafor(cfg config.NetworkConfig) *Semafor {
+	return &Semafor{
 		max:  cfg.MaxConnections,
 		cond: sync.NewCond(&sync.Mutex{}),
 	}
 }
 
-func (sem *Sem) Acquire() {
+func (sem *Semafor) Acquire() {
 	sem.cond.L.Lock()
 	defer sem.cond.L.Unlock()
 	for sem.count >= sem.max {
@@ -27,7 +27,7 @@ func (sem *Sem) Acquire() {
 	sem.count++
 }
 
-func (sem *Sem) TryAcquire() bool {
+func (sem *Semafor) TryAcquire() bool {
 	sem.cond.L.Lock()
 	defer sem.cond.L.Unlock()
 	if sem.count >= sem.max {
@@ -37,7 +37,7 @@ func (sem *Sem) TryAcquire() bool {
 	return true
 }
 
-func (sem *Sem) Release() {
+func (sem *Semafor) Release() {
 	sem.cond.L.Lock()
 	defer sem.cond.L.Unlock()
 	sem.count--
