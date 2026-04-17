@@ -2,6 +2,8 @@ package wal
 
 import (
 	"context"
+	"fmt"
+	"runtime/debug"
 	"storage/internal/config"
 	"storage/pkg/utils"
 	"time"
@@ -12,10 +14,11 @@ import (
 type WAL struct {
 	BatchTimeout   time.Duration
 	MaxSegmentSize int
-	DataPath       string
 	logger         *zap.Logger
-	data           []string
 	dataChan       chan string
+	worker         *Worker
+	diskManager    *DiskManager
+	Counter        int64
 }
 
 func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
@@ -29,35 +32,85 @@ func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
 	}
 	size := utils.ParseSize(cfg.MaxSegmentSize)
 
+	worker := &Worker{
+		closeCh:     make(chan struct{}),
+		closeDoneCh: make(chan struct{}),
+		data:        make([]record, 0, size),
+	}
+
 	return &WAL{
 		BatchTimeout:   duration,
-		DataPath:       cfg.DataDirectory,
+		diskManager:    NewDiskManager(cfg),
 		MaxSegmentSize: size,
 		logger:         logger,
 		dataChan:       make(chan string, cfg.BatchSize/3),
-		data:           make([]string, 0, cfg.BatchSize),
+		worker:         worker,
 	}, nil
 }
 
-func (W WAL) Start(_ context.Context) error {
-	go func() {
-		var _ *time.Timer
-		for range W.dataChan {
-			_ = <-W.dataChan
-			if len(W.data) == 0 {
-				_ = time.NewTimer(W.BatchTimeout)
-			}
+type record struct {
+	id   int64
+	data string
+}
+type Worker struct {
+	closeCh     chan struct{}
+	closeDoneCh chan struct{}
+	data        []record
+}
 
+func (w *WAL) Start(_ context.Context) *Worker {
+
+	go func() {
+		ticker := time.NewTicker(w.BatchTimeout)
+		defer func() {
+			if r := recover(); r != nil {
+				w.logger.Warn("recovered from panic", zap.String("stack", string(debug.Stack())))
+			}
+			ticker.Stop()
+			err := w.flush()
+			if err != nil {
+				w.logger.Error("failed to flush WAL", zap.Error(err))
+			}
+			close(w.worker.closeDoneCh)
+		}()
+
+		for {
+			select {
+			case <-w.worker.closeCh:
+				return
+			case <-ticker.C:
+				_ = w.flush()
+
+			case str := <-w.dataChan:
+				w.worker.data = append(w.worker.data, record{
+					id:   w.Counter,
+					data: str,
+				})
+				w.Counter++
+				if len(w.worker.data) >= w.MaxSegmentSize {
+					_ = w.flush()
+				}
+			}
 		}
 	}()
 
-	return nil
+	return w.worker
 }
 
-func (W WAL) Stop() {
-	close(W.dataChan)
+func (w *WAL) Stop() {
+	close(w.worker.closeCh)
+	<-w.worker.closeDoneCh
 }
 
-func (W WAL) Write(ctx context.Context, data string) error {
-	return nil
+func (w *WAL) Write(data string) error {
+	select {
+	case <-w.worker.closeCh:
+		return fmt.Errorf("wal is stopped")
+	case w.dataChan <- data:
+		return nil
+	}
+}
+
+func (w *WAL) flush() error {
+	return w.diskManager.Flush(w.worker.data)
 }
