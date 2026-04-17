@@ -20,17 +20,23 @@ type Storage interface {
 	Del(context.Context, string) error
 }
 
+type WAL interface {
+	Write(context.Context, string) error
+}
+
 type DB struct {
 	logger  *zap.Logger
 	compute Compute
 	storage Storage
+	wal     WAL
 }
 
-func NewDB(logger *zap.Logger, parser Compute, storage Storage) (*DB, error) {
+func NewDB(logger *zap.Logger, parser Compute, storage Storage, wal WAL) (*DB, error) {
 	return &DB{
 		logger:  logger,
 		compute: parser,
 		storage: storage,
+		wal:     wal,
 	}, nil
 }
 

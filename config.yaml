@@ -10,3 +10,9 @@ logging:
   output: "log/db.log"
 parser:
   max_query_length: 300
+wal:
+  enable: true
+  flushing_batch_size: 100
+  flushing_batch_timeout: "10ms"
+  max_segment_size: "10MB"
+  data_directory: "/data/wal"

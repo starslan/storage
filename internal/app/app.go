@@ -7,6 +7,7 @@ import (
 	"storage/internal/database/compute/parser"
 	"storage/internal/database/storage"
 	"storage/internal/database/storage/engine/memory"
+	"storage/internal/wal"
 
 	"go.uber.org/zap"
 )
@@ -34,7 +35,12 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		return nil, err
 	}
 
-	db, err := database.NewDB(logger, cmt, str)
+	wal, err := wal.NewWAL(cfg.WALConfig, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	db, err := database.NewDB(logger, cmt, str, wal)
 	if err != nil {
 		return nil, err
 	}
