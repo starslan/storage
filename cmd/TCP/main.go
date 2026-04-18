@@ -16,9 +16,12 @@ import (
 )
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	interruptCh := make(chan os.Signal, 1)
+	signal.Notify(interruptCh, syscall.SIGINT, syscall.SIGTERM)
+	defer close(interruptCh)
 
 	cfg, err := config.LoadConfig("config.yaml")
 	if err != nil {
@@ -38,6 +41,11 @@ func main() {
 		logger.Fatal("Failed to start application", zap.Error(err))
 	}
 
+	err = app.Start()
+	if err != nil {
+		logger.Fatal("Failed to start application", zap.Error(err))
+	}
+
 	srv, err := server.NewServer(app, cfg.Network)
 	if err != nil {
 		logger.Fatal("Failed to create new server", zap.Error(err))
@@ -47,5 +55,14 @@ func main() {
 		logger.Fatal("Failed to start server", zap.Error(err))
 	}
 
-	_ = srv.Stop()
+	<-interruptCh
+	err = app.Stop()
+	if err != nil {
+		logger.Fatal("Failed to stop app", zap.Error(err))
+	}
+	err = srv.Stop()
+	if err != nil {
+		logger.Fatal("Failed to stop server", zap.Error(err))
+	}
+
 }

@@ -53,3 +53,11 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		Logger: logger,
 	}, nil
 }
+
+func (app *App) Start() error {
+	return app.DB.Start()
+}
+
+func (app *App) Stop() error {
+	return app.DB.Stop()
+}

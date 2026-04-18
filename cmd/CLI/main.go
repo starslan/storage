@@ -5,9 +5,11 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"os/signal"
 	"storage/internal/app"
 	"storage/internal/config"
 	"storage/internal/logger"
+	"syscall"
 
 	"go.uber.org/zap"
 )
@@ -15,6 +17,10 @@ import (
 func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+
+	interruptCh := make(chan os.Signal, 1)
+	signal.Notify(interruptCh, syscall.SIGINT, syscall.SIGTERM)
+	defer close(interruptCh)
 
 	cfg, err := config.LoadConfig("config.yaml")
 	if err != nil {
@@ -35,11 +41,27 @@ func main() {
 
 	app, err := app.NewApp(cfg, logger)
 	if err != nil {
+		logger.Fatal("Failed to create application", zap.Error(err))
+	}
+
+	err = app.Start()
+	if err != nil {
 		logger.Fatal("Failed to start application", zap.Error(err))
 	}
 
 	scanner := bufio.NewScanner(os.Stdin)
+	running := true
 	for {
+		select {
+		case <-interruptCh:
+			logger.Info("Interrupt received")
+			running = false
+		default:
+		}
+		if !running {
+			fmt.Println("Exiting...")
+			break
+		}
 		fmt.Print(" DB> ")
 		if !scanner.Scan() {
 			break
@@ -52,6 +74,11 @@ func main() {
 
 		logger.Debug("Result:", zap.String("result", result))
 		fmt.Println(result)
+	}
+
+	err = app.Stop()
+	if err != nil {
+		logger.Error("Failed to stop application", zap.Error(err))
 	}
 
 	if err := scanner.Err(); err != nil {
