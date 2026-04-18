@@ -35,12 +35,15 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		return nil, err
 	}
 
-	wal, err := wal.NewWAL(cfg.WALConfig, logger)
-	if err != nil {
-		return nil, err
+	var walLog *wal.WAL
+	if cfg.WALConfig.Enable {
+		walLog, err = wal.NewWAL(cfg.WALConfig, logger)
+		if err != nil {
+			return nil, err
+		}
 	}
 
-	db, err := database.NewDB(logger, cmt, str, wal)
+	db, err := database.NewDB(logger, cmt, str, walLog)
 	if err != nil {
 		return nil, err
 	}

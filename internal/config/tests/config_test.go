@@ -132,11 +132,11 @@ wal:
 	}
 
 	if wal.BatchTimeout != "200ms" {
-		t.Errorf("BatchTimeout not applied")
+		t.Errorf("batchTimeout not applied")
 	}
 
 	if wal.MaxSegmentSize != "2MB" {
-		t.Errorf("MaxSegmentSize not applied")
+		t.Errorf("maxSegmentSize not applied")
 	}
 
 	if wal.DataDirectory != "/tmp/wal" {

@@ -21,7 +21,9 @@ type Storage interface {
 }
 
 type WAL interface {
-	Write(context.Context, string) error
+	Write(string) error
+	Start()
+	Stop()
 }
 
 type DB struct {
@@ -93,4 +95,17 @@ func (d *DB) handleDelQuery(ctx context.Context, query compute.Query) string {
 	}
 
 	return "[ok]"
+}
+
+func (d *DB) Start() error {
+	if d.wal != nil {
+		d.wal.Start()
+	}
+	return nil
+}
+func (d *DB) Stop() error {
+	if d.wal != nil {
+		d.wal.Stop()
+	}
+	return nil
 }
