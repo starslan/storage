@@ -22,7 +22,7 @@ type Storage interface {
 
 type WAL interface {
 	Write(string) error
-	Start()
+	Start(func(string) error) error
 	Stop()
 }
 
@@ -55,6 +55,7 @@ func (d *DB) HandleQuery(ctx context.Context, queryStr string) string {
 		return d.handleGetQuery(ctx, query)
 	case compute.DelCommandID:
 		return d.handleDelQuery(ctx, query)
+	default:
 	}
 
 	d.logger.Error(
@@ -99,7 +100,13 @@ func (d *DB) handleDelQuery(ctx context.Context, query compute.Query) string {
 
 func (d *DB) Start() error {
 	if d.wal != nil {
-		d.wal.Start()
+		err := d.wal.Start(func(q string) error {
+			d.HandleQuery(context.Background(), q)
+			return nil
+		})
+		if err != nil {
+			return err
+		}
 	}
 	return nil
 }

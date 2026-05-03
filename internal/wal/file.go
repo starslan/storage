@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 )
+
+var logFileRegexp = regexp.MustCompile(`^*\d{10}\.log$`)
 
 func lastLogFile(dir string) (*os.File, error) {
 	entries, err := os.ReadDir(dir)
