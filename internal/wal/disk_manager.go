@@ -58,7 +58,7 @@ func (dm *DiskManager) Load(action func(string) error) error {
 }
 
 func (dm *DiskManager) loadFromFile(fileName string, action func(string) error) error {
-	file, err := os.Open(dm.DataPath + fileName)
+	file, err := os.Open(fileName)
 	defer func() { _ = file.Close() }()
 	if err != nil {
 		return err
@@ -80,11 +80,9 @@ func (dm *DiskManager) loadFromFile(fileName string, action func(string) error) 
 		}
 		ids = append(ids, id)
 		dataMap[id] = af
-		errAct := action(line)
-		if errAct != nil {
-			return errAct
-		}
 	}
+
+	sort.Ints(ids)
 
 	for _, id := range ids {
 		err = action(dataMap[id])
