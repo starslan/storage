@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"storage/internal/config"
 	"strconv"
@@ -12,6 +13,8 @@ import (
 
 	"go.uber.org/zap"
 )
+
+var logFileRegexp = regexp.MustCompile(`^*\d{10}\.log$`)
 
 type DiskManager struct {
 	DataPath       string

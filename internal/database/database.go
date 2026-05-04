@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"storage/internal/database/compute"
 	"storage/internal/database/storage"
+	"time"
 
 	"go.uber.org/zap"
 )
@@ -43,6 +44,8 @@ func NewDB(logger *zap.Logger, parser Compute, storage Storage, wal WAL) (*DB, e
 }
 
 func (d *DB) HandleQuery(ctx context.Context, queryStr string) string {
+	ctxTimeout, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
 	query, err := d.compute.Parse(queryStr)
 	if err != nil {
 		d.logger.Error("Failed to parse query", zap.Error(err))
@@ -50,11 +53,17 @@ func (d *DB) HandleQuery(ctx context.Context, queryStr string) string {
 	}
 	switch query.CommandID() {
 	case compute.SetCommandID:
-		return d.handleSetQuery(ctx, query)
+		if err := d.writeToWAL(ctxTimeout, queryStr); err != nil {
+			return fmt.Sprintf("Failed to write query: %s", queryStr)
+		}
+		return d.handleSetQuery(ctxTimeout, query)
 	case compute.GetCommandID:
-		return d.handleGetQuery(ctx, query)
+		return d.handleGetQuery(ctxTimeout, query)
 	case compute.DelCommandID:
-		return d.handleDelQuery(ctx, query)
+		if err := d.writeToWAL(ctxTimeout, queryStr); err != nil {
+			return fmt.Sprintf("Failed to write query: %s", queryStr)
+		}
+		return d.handleDelQuery(ctxTimeout, query)
 	default:
 	}
 
@@ -113,6 +122,18 @@ func (d *DB) Start() error {
 func (d *DB) Stop() error {
 	if d.wal != nil {
 		d.wal.Stop()
+	}
+	return nil
+}
+
+func (d *DB) writeToWAL(ctx context.Context, queryStr string) error {
+	if d.wal == nil {
+		return nil
+	}
+
+	if err := d.wal.Write(ctx, queryStr); err != nil {
+		d.logger.Error("Failed to write query to wal", zap.Error(err), zap.String("query", queryStr))
+		return err
 	}
 	return nil
 }

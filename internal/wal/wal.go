@@ -7,7 +7,7 @@ import (
 	"storage/internal/config"
 	"storage/pkg/utils"
 	"strconv"
-	"sync/atomic"
+	"sync"
 	"time"
 
 	"go.uber.org/zap"
@@ -24,7 +24,8 @@ type WAL struct {
 	dataChan       chan record
 	worker         *Worker
 	diskManager    DataWriter
-	Counter        atomic.Int64
+	Counter        int64
+	mutex          sync.Mutex
 }
 
 func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
@@ -116,10 +117,13 @@ func (w *WAL) startWorker() {
 			if !ok {
 				return
 			}
-			rec.id = w.Counter.Load()
+			w.mutex.Lock()
+			rec.id = w.Counter
 			w.worker.data = append(w.worker.data, rec)
-			w.Counter.Add(1)
-			if len(w.worker.data) >= w.maxSegmentSize {
+			w.Counter++
+			needFlush := len(w.worker.data) >= w.maxSegmentSize
+			w.mutex.Unlock()
+			if needFlush {
 				err := w.flush()
 				if err != nil {
 					w.logger.Error("failed to flush WAL", zap.Error(err))
@@ -160,16 +164,19 @@ func (w *WAL) Write(ctx context.Context, data string) error {
 }
 
 func (w *WAL) flush() error {
-	data := w.worker.data
+	w.mutex.Lock()
 
-	if len(data) == 0 {
+	if len(w.worker.data) == 0 {
 		return nil
 	}
+	data := w.worker.data
+	w.worker.data = w.worker.data[:0]
+	w.mutex.Unlock()
 
 	err := w.diskManager.Flush(data)
 	for _, rec := range data {
 		rec.doneCh <- err
 	}
-	w.worker.data = w.worker.data[:0]
+
 	return err
 }
