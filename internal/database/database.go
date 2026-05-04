@@ -21,7 +21,7 @@ type Storage interface {
 }
 
 type WAL interface {
-	Write(string) error
+	Write(context.Context, string) error
 	Start(func(string) error) error
 	Stop()
 }

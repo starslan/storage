@@ -1,6 +1,7 @@
 package wal
 
 import (
+	"context"
 	"fmt"
 	"runtime/debug"
 	"storage/internal/config"
@@ -134,7 +135,7 @@ func (w *WAL) Stop() {
 	close(w.dataChan)
 }
 
-func (w *WAL) Write(data string) error {
+func (w *WAL) Write(ctx context.Context, data string) error {
 	timer := time.NewTimer(1 * time.Second)
 	defer timer.Stop()
 
@@ -143,11 +144,13 @@ func (w *WAL) Write(data string) error {
 	case <-w.worker.closeCh:
 		return fmt.Errorf("wal is stopped")
 	case w.dataChan <- rec:
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 
 	select {
-	case <-timer.C:
-		return fmt.Errorf("timed out write")
+	case <-ctx.Done():
+		return ctx.Err()
 	case err := <-rec.doneCh:
 		if err != nil {
 			return err
