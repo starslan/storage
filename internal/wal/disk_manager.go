@@ -3,11 +3,13 @@ package wal
 import (
 	"bufio"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
 	"sort"
 	"storage/internal/config"
+	"storage/pkg/utils"
 	"strconv"
 	"strings"
 
@@ -22,14 +24,16 @@ type DiskManager struct {
 	currentFile    *os.File
 	lineFileCount  int
 	fileNameCount  int
-	maxSegmentSize int
+	batchSize      int
+	maxSegmentSize int64
 }
 
-func NewDiskManager(cfg config.WALConfig, logger *zap.Logger, maxSegmentSize int) *DiskManager {
+func NewDiskManager(cfg config.WALConfig, logger *zap.Logger) *DiskManager {
 	return &DiskManager{
 		DataPath:       cfg.DataDirectory,
 		logger:         logger,
-		maxSegmentSize: maxSegmentSize,
+		batchSize:      cfg.BatchSize,
+		maxSegmentSize: int64(utils.ParseSize(cfg.MaxSegmentSize)),
 	}
 }
 
@@ -41,7 +45,7 @@ func (dm *DiskManager) Flush(records []record) error {
 	writer := bufio.NewWriter(dm.currentFile)
 
 	for i := range records {
-		line := records[i].String() + "\n"
+		line := records[i].String()
 
 		_, err := writer.WriteString(line)
 		if err != nil {
@@ -78,6 +82,16 @@ func (dm *DiskManager) Flush(records []record) error {
 		}
 	}
 
+	info, err := dm.currentFile.Stat()
+	if err != nil {
+		return err
+	}
+
+	fmt.Println(info.Size(), dm.maxSegmentSize)
+	if info.Size() >= dm.maxSegmentSize {
+		return dm.rotateLogFile()
+	}
+
 	return nil
 }
 
@@ -85,6 +99,10 @@ func (dm *DiskManager) Load(action func(string) error) error {
 	names, err := filepath.Glob(dm.DataPath + "/*.log")
 	if err != nil {
 		return err
+	}
+
+	if len(names) == 0 {
+		return dm.rotateLogFile()
 	}
 
 	sort.Strings(names)
@@ -100,16 +118,32 @@ func (dm *DiskManager) Load(action func(string) error) error {
 	return nil
 }
 
+func (dm *DiskManager) rotateLogFile() error {
+	if dm.currentFile != nil {
+		if err := dm.currentFile.Close(); err != nil {
+			return err
+		}
+	}
+	dm.fileNameCount++
+	file, err := os.Create(dm.DataPath + fmt.Sprintf("%011d.log", dm.fileNameCount))
+	if err != nil {
+		return err
+	}
+	dm.currentFile = file
+	dm.lineFileCount = 0
+	return nil
+}
+
 func (dm *DiskManager) loadFromFile(fileName string, action func(string) error, last bool) error {
 	file, err := os.Open(fileName)
 	defer func() { _ = file.Close() }()
 	if err != nil {
 		return err
 	}
-	lineCount := 0
+	dm.lineFileCount = 0
 
 	scanner := bufio.NewScanner(file)
-	ids := make([]int, dm.maxSegmentSize)
+	ids := make([]int, 0, dm.batchSize)
 	dataMap := map[int]string{}
 
 	for scanner.Scan() {
@@ -125,8 +159,19 @@ func (dm *DiskManager) loadFromFile(fileName string, action func(string) error, 
 		ids = append(ids, id)
 		dataMap[id] = af
 		if last {
-			lineCount++
+			dm.lineFileCount++
 		}
+	}
+
+	if last {
+		err = dm.parseLastFile(file)
+		if err != nil {
+			return err
+		}
+	}
+
+	if len(ids) == 0 {
+		return nil
 	}
 
 	sort.Ints(ids)
@@ -137,10 +182,17 @@ func (dm *DiskManager) loadFromFile(fileName string, action func(string) error, 
 			return err
 		}
 	}
+	return nil
+}
 
-	if last {
-		dm.lineFileCount = lineCount
-		dm.currentFile = file
+func (dm *DiskManager) parseLastFile(file *os.File) error {
+	dm.currentFile = file
+	numStr := strings.TrimSuffix(filepath.Base(file.Name()), ".log")
+
+	number, err := strconv.Atoi(numStr)
+	if err != nil {
+		return err
 	}
+	dm.fileNameCount = number
 	return nil
 }

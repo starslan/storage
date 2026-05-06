@@ -74,6 +74,31 @@ func (d *DB) HandleQuery(ctx context.Context, queryStr string) string {
 	return "[error] internal error"
 }
 
+func (d *DB) HandleWalQuery(queryStr string) string {
+	ctxTimeout, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	query, err := d.compute.Parse(queryStr)
+	if err != nil {
+		d.logger.Error("Failed to parse query", zap.Error(err))
+		return fmt.Sprintf("Failed to parse query: %s", queryStr)
+	}
+	switch query.CommandID() {
+	case compute.SetCommandID:
+		return d.handleSetQuery(ctxTimeout, query)
+	case compute.GetCommandID:
+		return d.handleGetQuery(ctxTimeout, query)
+	case compute.DelCommandID:
+		return d.handleDelQuery(ctxTimeout, query)
+	default:
+	}
+
+	d.logger.Error(
+		"compute layer is incorrect",
+		zap.Int("command_id", query.CommandID()),
+	)
+	return "[error] internal error"
+}
+
 func (d *DB) handleSetQuery(ctx context.Context, query compute.Query) string {
 	arguments := query.Arguments()
 	if err := d.storage.Set(ctx, arguments[0], arguments[1]); err != nil {
@@ -107,10 +132,10 @@ func (d *DB) handleDelQuery(ctx context.Context, query compute.Query) string {
 	return "[ok]"
 }
 
-func (d *DB) Start() error {
+func (d *DB) Start(_ context.Context) error {
 	if d.wal != nil {
 		err := d.wal.Start(func(q string) error {
-			d.HandleQuery(context.Background(), q)
+			d.HandleWalQuery(q)
 			return nil
 		})
 		if err != nil {

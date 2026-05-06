@@ -44,7 +44,7 @@ func main() {
 		logger.Fatal("Failed to create application", zap.Error(err))
 	}
 
-	err = app.Start()
+	err = app.Start(ctx)
 	if err != nil {
 		logger.Fatal("Failed to start application", zap.Error(err))
 	}

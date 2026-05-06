@@ -41,7 +41,7 @@ func main() {
 		logger.Fatal("Failed to start application", zap.Error(err))
 	}
 
-	err = app.Start()
+	err = app.Start(ctx)
 	if err != nil {
 		logger.Fatal("Failed to start application", zap.Error(err))
 	}
@@ -51,11 +51,18 @@ func main() {
 		logger.Fatal("Failed to create new server", zap.Error(err))
 	}
 
-	if err := srv.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		logger.Fatal("Failed to start server", zap.Error(err))
-	}
+	go func() {
+		if err := srv.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			logger.Fatal("Failed to start server", zap.Error(err))
+		}
+	}()
+
+	fmt.Println("Server started")
 
 	<-interruptCh
+	fmt.Println("Signal interrupt")
+
+	cancel()
 	err = app.Stop()
 	if err != nil {
 		logger.Fatal("Failed to stop app", zap.Error(err))

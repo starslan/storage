@@ -19,6 +19,7 @@ type DataWriter interface {
 }
 type WAL struct {
 	batchTimeout   time.Duration
+	batchSize      int
 	maxSegmentSize int
 	logger         *zap.Logger
 	dataChan       chan record
@@ -47,10 +48,11 @@ func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
 
 	return &WAL{
 		batchTimeout:   duration,
-		diskManager:    NewDiskManager(cfg, logger, size),
+		batchSize:      cfg.BatchSize,
+		diskManager:    NewDiskManager(cfg, logger),
 		maxSegmentSize: size,
 		logger:         logger,
-		dataChan:       make(chan record, cfg.BatchSize/3),
+		dataChan:       make(chan record, cfg.BatchSize),
 		worker:         worker,
 	}, nil
 }
@@ -121,7 +123,7 @@ func (w *WAL) startWorker() {
 			rec.id = w.Counter
 			w.worker.data = append(w.worker.data, rec)
 			w.Counter++
-			needFlush := len(w.worker.data) >= w.maxSegmentSize
+			needFlush := len(w.worker.data) >= w.batchSize
 			w.mutex.Unlock()
 			if needFlush {
 				err := w.flush()
@@ -167,6 +169,7 @@ func (w *WAL) flush() error {
 	w.mutex.Lock()
 
 	if len(w.worker.data) == 0 {
+		w.mutex.Unlock()
 		return nil
 	}
 	data := w.worker.data

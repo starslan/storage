@@ -3,6 +3,7 @@ package server
 import (
 	"bufio"
 	"context"
+	"errors"
 	"net"
 	"storage/internal/app"
 	"storage/internal/config"
@@ -39,10 +40,25 @@ func NewServer(app *app.App, cfg config.NetworkConfig) (*Server, error) {
 func (s *Server) Start(ctx context.Context) error {
 	s.logger.Info("Server listen:", zap.String("addr", s.listener.Addr().String()))
 
+	go func() {
+		<-ctx.Done()
+		s.logger.Info("Shutting down listener...")
+		_ = s.listener.Close()
+	}()
+
 	for {
 		conn, err := s.listener.Accept()
 		if err != nil {
-			s.logger.Error("Server accept error", zap.Error(err))
+			select {
+			case <-ctx.Done():
+				return nil
+			default:
+				if errors.Is(err, net.ErrClosed) {
+					return nil
+				}
+				s.logger.Error("Server accept error", zap.Error(err))
+				continue
+			}
 		}
 
 		if !s.semafor.TryAcquire() {
@@ -77,6 +93,10 @@ func (s *Server) Start(ctx context.Context) error {
 func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	defer func() { _ = conn.Close() }()
 
+	go func() {
+		<-ctx.Done()
+		_ = conn.Close()
+	}()
 	s.logger.Info("Client connected:", zap.String("remote addr", conn.RemoteAddr().String()))
 	maxPageSize := utils.ParseSize(s.cfg.MaxMessageSize)
 	reader := bufio.NewReader(conn)

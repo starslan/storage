@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"storage/internal/config"
 	"storage/internal/database"
 	"storage/internal/database/compute"
@@ -35,15 +36,19 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 		return nil, err
 	}
 
-	var walLog *wal.WAL
+	var walLog database.WAL
+	var db *database.DB
 	if cfg.WALConfig.Enable {
-		walLog, err = wal.NewWAL(cfg.WALConfig, logger)
+		walLogImpl, err := wal.NewWAL(cfg.WALConfig, logger)
 		if err != nil {
 			return nil, err
 		}
+		walLog = walLogImpl
+	} else {
+		walLog = nil
 	}
 
-	db, err := database.NewDB(logger, cmt, str, walLog)
+	db, err = database.NewDB(logger, cmt, str, walLog)
 	if err != nil {
 		return nil, err
 	}
@@ -54,8 +59,8 @@ func NewApp(cfg *config.Config, logger *zap.Logger) (*App, error) {
 	}, nil
 }
 
-func (app *App) Start() error {
-	return app.DB.Start()
+func (app *App) Start(ctx context.Context) error {
+	return app.DB.Start(ctx)
 }
 
 func (app *App) Stop() error {
