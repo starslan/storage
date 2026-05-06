@@ -13,6 +13,6 @@ parser:
 wal:
   enable: true
   flushing_batch_size: 100
-  flushing_batch_timeout: "10ms"
+  flushing_batch_timeout: "3000ms"
   max_segment_size: "10MB"
   data_directory: "data/wal/"

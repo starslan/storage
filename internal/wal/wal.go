@@ -8,6 +8,7 @@ import (
 	"storage/pkg/utils"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.uber.org/zap"
@@ -15,12 +16,13 @@ import (
 
 type DataWriter interface {
 	Flush(records []record) error
-	Load(func(string) error) error
+	Load(func(string) error) (*int, error)
 }
 type WAL struct {
 	batchTimeout   time.Duration
 	batchSize      int
 	maxSegmentSize int
+	IDRecord       atomic.Int64
 	logger         *zap.Logger
 	dataChan       chan record
 	worker         *Worker
@@ -34,8 +36,7 @@ func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = utils.CheckDir(cfg.DataDirectory)
-	if err != nil {
+	if err := utils.CheckDir(cfg.DataDirectory); err != nil {
 		return nil, err
 	}
 	size := utils.ParseSize(cfg.MaxSegmentSize)
@@ -74,10 +75,16 @@ type Worker struct {
 }
 
 func (w *WAL) Start(replay func(string) error) error {
-	err := w.diskManager.Load(replay)
+	lastId, err := w.diskManager.Load(replay)
 	if err != nil {
 		return err
 	}
+	if lastId == nil {
+		w.IDRecord.Store(0)
+	} else {
+		w.IDRecord.Store(int64(*lastId))
+	}
+
 	go w.startWorker()
 	return nil
 }
@@ -91,8 +98,7 @@ func (w *WAL) startWorker() {
 			needRestart = true
 		}
 		ticker.Stop()
-		err := w.flush()
-		if err != nil {
+		if err := w.flush(); err != nil {
 			w.logger.Error("failed to flush WAL", zap.Error(err))
 		}
 		if !needRestart {
@@ -110,8 +116,7 @@ func (w *WAL) startWorker() {
 			w.logger.Info("shutting down WAL")
 			return
 		case <-ticker.C:
-			err := w.flush()
-			if err != nil {
+			if err := w.flush(); err != nil {
 				w.logger.Error("failed to flush WAL", zap.Error(err))
 			}
 
@@ -120,14 +125,13 @@ func (w *WAL) startWorker() {
 				return
 			}
 			w.mutex.Lock()
-			rec.id = w.Counter
+			rec.id = w.IDRecord.Add(1)
 			w.worker.data = append(w.worker.data, rec)
 			w.Counter++
 			needFlush := len(w.worker.data) >= w.batchSize
 			w.mutex.Unlock()
 			if needFlush {
-				err := w.flush()
-				if err != nil {
+				if err := w.flush(); err != nil {
 					w.logger.Error("failed to flush WAL", zap.Error(err))
 				}
 			}
@@ -177,8 +181,11 @@ func (w *WAL) flush() error {
 	w.mutex.Unlock()
 
 	err := w.diskManager.Flush(data)
-	for _, rec := range data {
-		rec.doneCh <- err
+
+	if err != nil {
+		for _, rec := range data {
+			rec.doneCh <- err
+		}
 	}
 
 	return err

@@ -12,6 +12,7 @@ import (
 	"storage/pkg/utils"
 	"strconv"
 	"strings"
+	"sync"
 
 	"go.uber.org/zap"
 )
@@ -22,10 +23,10 @@ type DiskManager struct {
 	DataPath       string
 	logger         *zap.Logger
 	currentFile    *os.File
-	lineFileCount  int
 	fileNameCount  int
 	batchSize      int
 	maxSegmentSize int64
+	mutex          sync.Mutex
 }
 
 func NewDiskManager(cfg config.WALConfig, logger *zap.Logger) *DiskManager {
@@ -38,6 +39,8 @@ func NewDiskManager(cfg config.WALConfig, logger *zap.Logger) *DiskManager {
 }
 
 func (dm *DiskManager) Flush(records []record) error {
+	dm.mutex.Lock()
+	defer dm.mutex.Unlock()
 	if len(records) == 0 {
 		return nil
 	}
@@ -87,7 +90,6 @@ func (dm *DiskManager) Flush(records []record) error {
 		return err
 	}
 
-	fmt.Println(info.Size(), dm.maxSegmentSize)
 	if info.Size() >= dm.maxSegmentSize {
 		return dm.rotateLogFile()
 	}
@@ -95,30 +97,37 @@ func (dm *DiskManager) Flush(records []record) error {
 	return nil
 }
 
-func (dm *DiskManager) Load(action func(string) error) error {
+func (dm *DiskManager) Load(action func(string) error) (*int, error) {
 	names, err := filepath.Glob(dm.DataPath + "/*.log")
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if len(names) == 0 {
-		return dm.rotateLogFile()
+		return nil, dm.rotateLogFile()
 	}
 
 	sort.Strings(names)
 
+	var lastID *int
 	for i, name := range names {
 		last := i == len(names)-1
-		err = dm.loadFromFile(name, action, last)
-		if err != nil {
-			return err
+		var id *int
+		if id, err = dm.loadFromFile(name, action, last); err != nil {
+			return nil, err
+		}
+		if last && id != nil {
+			lastID = id
 		}
 	}
 
-	return nil
+	return lastID, nil
+
 }
 
 func (dm *DiskManager) rotateLogFile() error {
+	dm.mutex.Lock()
+	defer dm.mutex.Unlock()
 	if dm.currentFile != nil {
 		if err := dm.currentFile.Close(); err != nil {
 			return err
@@ -130,62 +139,79 @@ func (dm *DiskManager) rotateLogFile() error {
 		return err
 	}
 	dm.currentFile = file
-	dm.lineFileCount = 0
 	return nil
 }
 
-func (dm *DiskManager) loadFromFile(fileName string, action func(string) error, last bool) error {
+func (dm *DiskManager) loadFromFile(fileName string, action func(string) error, last bool) (*int, error) {
 	file, err := os.Open(fileName)
-	defer func() { _ = file.Close() }()
+	defer func() {
+		if !last {
+			_ = file.Close()
+		}
+	}()
 	if err != nil {
-		return err
+		return nil, err
 	}
-	dm.lineFileCount = 0
 
 	scanner := bufio.NewScanner(file)
 	ids := make([]int, 0, dm.batchSize)
 	dataMap := map[int]string{}
+	var lastId int
 
 	for scanner.Scan() {
 		line := scanner.Text()
 		bf, af, f := strings.Cut(line, "_")
 		if !f {
-			return errors.New("record not parse")
+			return nil, errors.New("record not parse")
 		}
 		id, err := strconv.Atoi(bf)
 		if err != nil {
-			return err
+			return nil, err
 		}
 		ids = append(ids, id)
 		dataMap[id] = af
-		if last {
-			dm.lineFileCount++
-		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
 	}
 
 	if last {
-		err = dm.parseLastFile(file)
+		_ = file.Close()
+
+		file, err = os.OpenFile(fileName, os.O_APPEND|os.O_WRONLY, 0644)
 		if err != nil {
-			return err
+			return nil, err
 		}
+
+		dm.currentFile = file
+		numStr := strings.TrimSuffix(filepath.Base(file.Name()), ".log")
+		number, err := strconv.Atoi(numStr)
+		if err != nil {
+			return nil, err
+		}
+		dm.fileNameCount = number
 	}
 
 	if len(ids) == 0 {
-		return nil
+		return nil, nil
 	}
 
 	sort.Ints(ids)
 
+	if last {
+		lastId = ids[len(ids)-1]
+	}
+
 	for _, id := range ids {
-		err = action(dataMap[id])
-		if err != nil {
-			return err
+		if err := action(dataMap[id]); err != nil {
+			return nil, err
 		}
 	}
-	return nil
+	return &lastId, nil
 }
 
-func (dm *DiskManager) parseLastFile(file *os.File) error {
+func (dm *DiskManager) setCurrentFile(file *os.File) error {
 	dm.currentFile = file
 	numStr := strings.TrimSuffix(filepath.Base(file.Name()), ".log")
 
