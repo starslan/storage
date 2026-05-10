@@ -4,7 +4,7 @@ network:
   address: "127.0.0.1:3223"
   max_connections: 100
   max_message_size: "4KB"
-  idle_timeout: "5m"
+  idle_timeout: "15m"
 logging:
   level: "info"
   output: "log/db.log"
@@ -13,6 +13,6 @@ parser:
 wal:
   enable: true
   flushing_batch_size: 100
-  flushing_batch_timeout: "3000ms"
+  flushing_batch_timeout: "500ms"
   max_segment_size: "10MB"
   data_directory: "data/wal/"

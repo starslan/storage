@@ -44,7 +44,7 @@ func NewDB(logger *zap.Logger, parser Compute, storage Storage, wal WAL) (*DB, e
 }
 
 func (d *DB) HandleQuery(ctx context.Context, queryStr string) string {
-	ctxTimeout, cancel := context.WithTimeout(ctx, 3*time.Second)
+	ctxTimeout, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	query, err := d.compute.Parse(queryStr)
 	if err != nil {

@@ -29,6 +29,7 @@ type WAL struct {
 	diskManager    DataWriter
 	Counter        int64
 	mutex          sync.Mutex
+	flushCh        chan struct{}
 }
 
 func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
@@ -55,6 +56,7 @@ func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
 		logger:         logger,
 		dataChan:       make(chan record, cfg.BatchSize),
 		worker:         worker,
+		flushCh:        make(chan struct{}, 1),
 	}, nil
 }
 
@@ -116,24 +118,23 @@ func (w *WAL) startWorker() {
 			w.logger.Info("shutting down WAL")
 			return
 		case <-ticker.C:
-			if err := w.flush(); err != nil {
-				w.logger.Error("failed to flush WAL", zap.Error(err))
-			}
+			w.triggerFlush()
 
 		case rec, ok := <-w.dataChan:
 			if !ok {
 				return
 			}
-			w.mutex.Lock()
+
 			rec.id = w.IDRecord.Add(1)
 			w.worker.data = append(w.worker.data, rec)
 			w.Counter++
-			needFlush := len(w.worker.data) >= w.batchSize
-			w.mutex.Unlock()
-			if needFlush {
-				if err := w.flush(); err != nil {
-					w.logger.Error("failed to flush WAL", zap.Error(err))
-				}
+
+			if len(w.worker.data) >= w.batchSize {
+				w.triggerFlush()
+			}
+		case <-w.flushCh:
+			if err := w.flush(); err != nil {
+				w.logger.Error("failed to flush WAL", zap.Error(err))
 			}
 		}
 	}
@@ -170,23 +171,25 @@ func (w *WAL) Write(ctx context.Context, data string) error {
 }
 
 func (w *WAL) flush() error {
-	w.mutex.Lock()
 
 	if len(w.worker.data) == 0 {
-		w.mutex.Unlock()
+
 		return nil
 	}
 	data := w.worker.data
 	w.worker.data = w.worker.data[:0]
-	w.mutex.Unlock()
 
 	err := w.diskManager.Flush(data)
-
-	if err != nil {
-		for _, rec := range data {
-			rec.doneCh <- err
-		}
+	for _, rec := range data {
+		rec.doneCh <- err
 	}
 
 	return err
+}
+
+func (w *WAL) triggerFlush() {
+	select {
+	case w.flushCh <- struct{}{}:
+	default:
+	}
 }
