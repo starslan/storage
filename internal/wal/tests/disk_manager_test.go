@@ -1,61 +1,103 @@
 package tests
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
-	"storage/internal/wal"
+	"reflect"
+	"runtime"
 	"testing"
+
+	"go.uber.org/zap"
+
+	"storage/internal/config"
+	"storage/internal/wal"
 )
 
-func TestLoad_Success(t *testing.T) {
+func TestLoadCreatesNewSegmentWhenEmpty(t *testing.T) {
 	dir := t.TempDir()
 
-	files := []string{
-		"0000000001.log",
-		"0000000002.log",
+	cfg := config.WALConfig{
+		DataDirectory:  filepath.Clean(dir) + string(os.PathSeparator),
+		BatchSize:      4,
+		MaxSegmentSize: "1MB",
 	}
 
-	content := []string{
-		"2_SET key2 value2\n1_SET key1 value1\n3_SET key3 value3",
-		"4_SET key4 value4",
-	}
-
-	for i, f := range files {
-		err := os.WriteFile(filepath.Join(dir, f), []byte(content[i]), 0644)
-		if err != nil {
-			t.Fatalf("failed to write file: %v", err)
+	dm := wal.NewDiskManager(cfg, zap.NewNop())
+	t.Cleanup(func() {
+		if closer, ok := any(dm).(interface{ Close() error }); ok {
+			_ = closer.Close()
+		} else {
+			dm = nil
+			runtime.GC()
 		}
-	}
-
-	var loaded []string
-
-	dm := &wal.DiskManager{
-		DataPath: dir,
-	}
-
-	err := dm.Load(func(s string) error {
-		loaded = append(loaded, s)
-		return nil
 	})
 
+	lastID, err := dm.Load(func(string) error { return nil })
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("Load returned error: %v", err)
+	}
+	if lastID != nil {
+		t.Fatalf("expected lastID to be nil, got %v", *lastID)
 	}
 
-	expected := []string{
-		"SET key1 value1",
-		"SET key2 value2",
-		"SET key3 value3",
-		"SET key4 value4",
+	files, err := filepath.Glob(filepath.Join(cfg.DataDirectory, "*.log"))
+	if err != nil {
+		t.Fatalf("glob failed: %v", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("expected one log file to be created, got %d", len(files))
+	}
+	if filepath.Base(files[0]) != "00000000001.log" {
+		t.Fatalf("unexpected log file name: %s", filepath.Base(files[0]))
+	}
+}
+
+func TestLoadReadsExistingSegments(t *testing.T) {
+	dir := t.TempDir()
+
+	// Prepare two WAL segments with unsorted ids to verify sorting.
+	file1 := filepath.Join(dir, fmt.Sprintf("%011d.log", 1))
+	file2 := filepath.Join(dir, fmt.Sprintf("%011d.log", 2))
+
+	if err := os.WriteFile(file1, []byte("2_a\n1_b\n"), 0644); err != nil {
+		t.Fatalf("failed to write %s: %v", file1, err)
+	}
+	if err := os.WriteFile(file2, []byte("5_e\n4_d\n"), 0644); err != nil {
+		t.Fatalf("failed to write %s: %v", file2, err)
 	}
 
-	if len(loaded) != len(expected) {
-		t.Fatalf("expected %d records, got %d", len(expected), len(loaded))
+	cfg := config.WALConfig{
+		DataDirectory:  filepath.Clean(dir) + string(os.PathSeparator),
+		BatchSize:      4,
+		MaxSegmentSize: "1MB",
 	}
 
-	for i := range expected {
-		if loaded[i] != expected[i] {
-			t.Fatalf("unexpected record at %d: got %q, want %q", i, loaded[i], expected[i])
+	dm := wal.NewDiskManager(cfg, zap.NewNop())
+	t.Cleanup(func() {
+		if closer, ok := any(dm).(interface{ Close() error }); ok {
+			_ = closer.Close()
+		} else {
+			dm = nil
+			runtime.GC()
 		}
+	})
+
+	var records []string
+	lastID, err := dm.Load(func(val string) error {
+		records = append(records, val)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("Load returned error: %v", err)
+	}
+
+	expected := []string{"b", "a", "d", "e"}
+	if !reflect.DeepEqual(records, expected) {
+		t.Fatalf("unexpected records order: got %v, want %v", records, expected)
+	}
+
+	if lastID == nil || *lastID != 5 {
+		t.Fatalf("unexpected lastID: got %v, want %d", lastID, 5)
 	}
 }

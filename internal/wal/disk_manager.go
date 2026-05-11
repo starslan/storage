@@ -137,10 +137,10 @@ func (dm *DiskManager) loadFromFile(fileName string, action func(string) error, 
 
 	for scanner.Scan() {
 		line := scanner.Text()
-		bf, af, f := strings.Cut(line, "_")
 		if line == "" {
 			continue
 		}
+		bf, af, f := strings.Cut(line, "_")
 		if !f {
 			return nil, errors.New("record not parse")
 		}
