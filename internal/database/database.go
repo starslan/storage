@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"storage/internal/concurrency"
 	"storage/internal/database/compute"
 	"storage/internal/database/storage"
 	"time"
@@ -22,7 +23,7 @@ type Storage interface {
 }
 
 type WAL interface {
-	Write(context.Context, string) error
+	Write(context.Context, string) concurrency.FutureError
 	Start(func(string) error) error
 	Stop()
 }
@@ -154,7 +155,9 @@ func (d *DB) writeToWAL(ctx context.Context, queryStr string) error {
 		return nil
 	}
 
-	if err := d.wal.Write(ctx, queryStr); err != nil {
+	errFut := d.wal.Write(ctx, queryStr)
+	err := errFut.Get()
+	if err != nil {
 		d.logger.Error("Failed to write query to wal", zap.Error(err), zap.String("query", queryStr))
 		return err
 	}

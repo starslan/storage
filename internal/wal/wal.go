@@ -3,8 +3,10 @@ package wal
 import (
 	"context"
 	"runtime/debug"
+	"storage/internal/concurrency"
 	"storage/internal/config"
 	"storage/pkg/utils"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -12,7 +14,7 @@ import (
 )
 
 type DataWriter interface {
-	Flush(records []Record) error
+	Flush(records []*Record) error
 	Load(func(string) error) (*int, error)
 }
 type WAL struct {
@@ -21,11 +23,11 @@ type WAL struct {
 	maxSegmentSize int
 	IDRecord       atomic.Int64
 	logger         *zap.Logger
-	dataChan       chan Record
+	dataChan       chan *Record
 	worker         *Worker
 	diskManager    DataWriter
 	Counter        int64
-	flushCh        chan struct{}
+	mutex          sync.Mutex
 }
 
 func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
@@ -41,7 +43,7 @@ func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
 	worker := &Worker{
 		closeCh:     make(chan struct{}),
 		closeDoneCh: make(chan struct{}),
-		data:        make([]Record, 0, size),
+		data:        make([]*Record, 0, size),
 	}
 
 	return &WAL{
@@ -50,16 +52,15 @@ func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
 		diskManager:    NewDiskManager(cfg, logger),
 		maxSegmentSize: size,
 		logger:         logger,
-		dataChan:       make(chan Record, cfg.BatchSize),
+		dataChan:       make(chan *Record, cfg.BatchSize),
 		worker:         worker,
-		flushCh:        make(chan struct{}, 1),
 	}, nil
 }
 
 type Worker struct {
 	closeCh     chan struct{}
 	closeDoneCh chan struct{}
-	data        []Record
+	data        []*Record
 }
 
 func (w *WAL) Start(replay func(string) error) error {
@@ -86,9 +87,7 @@ func (w *WAL) startWorker() {
 			needRestart = true
 		}
 		ticker.Stop()
-		if err := w.flush(); err != nil {
-			w.logger.Error("failed to flush WAL", zap.Error(err))
-		}
+		w.flush()
 		if !needRestart {
 			close(w.worker.closeDoneCh)
 			return
@@ -104,23 +103,18 @@ func (w *WAL) startWorker() {
 			w.logger.Info("shutting down WAL")
 			return
 		case <-ticker.C:
-			w.triggerFlush()
+			w.flush()
 
 		case rec, ok := <-w.dataChan:
 			if !ok {
 				return
 			}
-
-			rec.id = w.IDRecord.Add(1)
 			w.worker.data = append(w.worker.data, rec)
 			w.Counter++
 
 			if len(w.worker.data) >= w.batchSize {
-				w.triggerFlush()
-			}
-		case <-w.flushCh:
-			if err := w.flush(); err != nil {
-				w.logger.Error("failed to flush WAL", zap.Error(err))
+				w.flush()
+				ticker.Reset(w.batchTimeout)
 			}
 		}
 	}
@@ -132,46 +126,32 @@ func (w *WAL) Stop() {
 	close(w.dataChan)
 }
 
-func (w *WAL) Write(ctx context.Context, data string) error {
-
-	rec := NewRecord(data)
-	select {
-	case w.dataChan <- *rec:
-	case <-ctx.Done():
-		return ctx.Err()
-	}
+func (w *WAL) Write(ctx context.Context, data string) concurrency.FutureError {
+	id := w.IDRecord.Add(1)
+	rec := NewRecord(data, id)
 
 	select {
+	case w.dataChan <- rec:
+		return concurrency.NewFuture(rec.doneCh)
+
 	case <-ctx.Done():
-		return ctx.Err()
-	case err := <-rec.doneCh:
-		if err != nil {
-			return err
-		}
+		ch := make(chan error, 1)
+		ch <- ctx.Err()
+		return concurrency.NewFuture(ch)
 	}
-	return nil
 }
 
-func (w *WAL) flush() error {
-
+func (w *WAL) flush() {
 	if len(w.worker.data) == 0 {
-
-		return nil
+		return
 	}
+	w.mutex.Lock()
 	data := w.worker.data
 	w.worker.data = w.worker.data[:0]
+	w.mutex.Unlock()
 
 	err := w.diskManager.Flush(data)
 	for _, rec := range data {
 		rec.doneCh <- err
-	}
-
-	return err
-}
-
-func (w *WAL) triggerFlush() {
-	select {
-	case w.flushCh <- struct{}{}:
-	default:
 	}
 }

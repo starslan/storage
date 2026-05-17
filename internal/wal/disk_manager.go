@@ -4,15 +4,12 @@ import (
 	"bufio"
 	"fmt"
 	"os"
-	"regexp"
 	"storage/internal/config"
 	"storage/pkg/utils"
 	"sync"
 
 	"go.uber.org/zap"
 )
-
-var logFileRegexp = regexp.MustCompile(`^*\d{10}\.log$`)
 
 type DiskManager struct {
 	DataPath       string
@@ -33,7 +30,7 @@ func NewDiskManager(cfg config.WALConfig, logger *zap.Logger) *DiskManager {
 	}
 }
 
-func (dm *DiskManager) Flush(records []Record) error {
+func (dm *DiskManager) Flush(records []*Record) error {
 	if len(records) == 0 {
 		return nil
 	}
