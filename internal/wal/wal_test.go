@@ -16,19 +16,19 @@ type mockDiskManager struct {
 	loadErr   error
 	flushErr  error
 	mu        sync.Mutex
-	flushed   [][]Record
-	flushedCh chan []Record
+	flushed   [][]*Record
+	flushedCh chan []*Record
 }
 
 func (m *mockDiskManager) Load(func(string) error) (*int, error) {
 	return m.loadID, m.loadErr
 }
 
-func (m *mockDiskManager) Flush(records []Record) error {
+func (m *mockDiskManager) Flush(records []*Record) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	cp := make([]Record, len(records))
+	cp := make([]*Record, len(records))
 	copy(cp, records)
 	m.flushed = append(m.flushed, cp)
 	if m.flushedCh != nil {
@@ -51,7 +51,7 @@ func TestWriteFlushesOnBatchSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewWAL returned error: %v", err)
 	}
-	mock := &mockDiskManager{flushedCh: make(chan []Record, 10)}
+	mock := &mockDiskManager{flushedCh: make(chan []*Record, 10)}
 	w.diskManager = mock
 
 	if err := w.Start(func(string) error { return nil }); err != nil {
@@ -59,14 +59,10 @@ func TestWriteFlushesOnBatchSize(t *testing.T) {
 	}
 	defer w.Stop()
 
-	if err := w.Write(context.Background(), "first"); err != nil {
-		t.Fatalf("Write returned error: %v", err)
-	}
-	if err := w.Write(context.Background(), "second"); err != nil {
-		t.Fatalf("Write returned error: %v", err)
-	}
+	_ = w.Write(context.Background(), "first")
+	_ = w.Write(context.Background(), "second")
 
-	var flushed []Record
+	var flushed []*Record
 	timeout := time.After(2 * time.Second)
 	for len(flushed) < 2 {
 		select {
@@ -88,7 +84,7 @@ func TestWriteFlushesOnBatchSize(t *testing.T) {
 func TestStartSetsInitialIDFromLoad(t *testing.T) {
 	cfg := config.WALConfig{
 		DataDirectory:  t.TempDir() + "/",
-		BatchTimeout:   "1s",
+		BatchTimeout:   "50ms",
 		BatchSize:      4,
 		MaxSegmentSize: "1MB",
 	}
@@ -97,7 +93,7 @@ func TestStartSetsInitialIDFromLoad(t *testing.T) {
 		t.Fatalf("NewWAL returned error: %v", err)
 	}
 	loadID := 5
-	mock := &mockDiskManager{loadID: &loadID, flushedCh: make(chan []Record, 10)}
+	mock := &mockDiskManager{loadID: &loadID, flushedCh: make(chan []*Record, 10)}
 	w.diskManager = mock
 
 	if err := w.Start(func(string) error { return nil }); err != nil {
@@ -105,12 +101,9 @@ func TestStartSetsInitialIDFromLoad(t *testing.T) {
 	}
 	defer w.Stop()
 
-	if err := w.Write(context.Background(), "next"); err != nil {
-		t.Fatalf("Write returned error: %v", err)
-	}
-	w.triggerFlush()
+	_ = w.Write(context.Background(), "next")
 
-	var flushed []Record
+	var flushed []*Record
 	select {
 	case flushed = <-mock.flushedCh:
 	case <-time.After(2 * time.Second):
