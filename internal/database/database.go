@@ -85,8 +85,6 @@ func (d *DB) HandleWalQuery(queryStr string) string {
 	switch query.CommandID() {
 	case compute.SetCommandID:
 		return d.handleSetQuery(ctxTimeout, query)
-	case compute.GetCommandID:
-		return d.handleGetQuery(ctxTimeout, query)
 	case compute.DelCommandID:
 		return d.handleDelQuery(ctxTimeout, query)
 	default:

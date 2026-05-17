@@ -33,7 +33,7 @@ func NewDiskManager(cfg config.WALConfig, logger *zap.Logger) *DiskManager {
 	}
 }
 
-func (dm *DiskManager) Flush(records []record) error {
+func (dm *DiskManager) Flush(records []Record) error {
 	if len(records) == 0 {
 		return nil
 	}

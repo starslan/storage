@@ -125,5 +125,8 @@ func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 }
 
 func (s *Server) Stop() error {
+	if err := s.app.Stop(); err != nil {
+		return err
+	}
 	return s.listener.Close()
 }

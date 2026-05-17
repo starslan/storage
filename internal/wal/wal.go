@@ -2,12 +2,9 @@ package wal
 
 import (
 	"context"
-	"fmt"
 	"runtime/debug"
 	"storage/internal/config"
 	"storage/pkg/utils"
-	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -15,7 +12,7 @@ import (
 )
 
 type DataWriter interface {
-	Flush(records []record) error
+	Flush(records []Record) error
 	Load(func(string) error) (*int, error)
 }
 type WAL struct {
@@ -24,11 +21,10 @@ type WAL struct {
 	maxSegmentSize int
 	IDRecord       atomic.Int64
 	logger         *zap.Logger
-	dataChan       chan record
+	dataChan       chan Record
 	worker         *Worker
 	diskManager    DataWriter
 	Counter        int64
-	mutex          sync.Mutex
 	flushCh        chan struct{}
 }
 
@@ -45,7 +41,7 @@ func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
 	worker := &Worker{
 		closeCh:     make(chan struct{}),
 		closeDoneCh: make(chan struct{}),
-		data:        make([]record, 0, size),
+		data:        make([]Record, 0, size),
 	}
 
 	return &WAL{
@@ -54,26 +50,16 @@ func NewWAL(cfg config.WALConfig, logger *zap.Logger) (*WAL, error) {
 		diskManager:    NewDiskManager(cfg, logger),
 		maxSegmentSize: size,
 		logger:         logger,
-		dataChan:       make(chan record, cfg.BatchSize),
+		dataChan:       make(chan Record, cfg.BatchSize),
 		worker:         worker,
 		flushCh:        make(chan struct{}, 1),
 	}, nil
 }
 
-type record struct {
-	id     int64
-	data   string
-	doneCh chan error
-}
-
-func (record *record) String() string {
-	return strconv.FormatInt(record.id, 10) + "_" + record.data
-}
-
 type Worker struct {
 	closeCh     chan struct{}
 	closeDoneCh chan struct{}
-	data        []record
+	data        []Record
 }
 
 func (w *WAL) Start(replay func(string) error) error {
@@ -147,14 +133,10 @@ func (w *WAL) Stop() {
 }
 
 func (w *WAL) Write(ctx context.Context, data string) error {
-	timer := time.NewTimer(1 * time.Second)
-	defer timer.Stop()
 
-	rec := record{data: data, doneCh: make(chan error, 1)}
+	rec := NewRecord(data)
 	select {
-	case <-w.worker.closeCh:
-		return fmt.Errorf("wal is stopped")
-	case w.dataChan <- rec:
+	case w.dataChan <- *rec:
 	case <-ctx.Done():
 		return ctx.Err()
 	}

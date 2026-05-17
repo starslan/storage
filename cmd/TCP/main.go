@@ -60,16 +60,12 @@ func main() {
 	fmt.Println("Server started")
 
 	<-interruptCh
-	stop(logger, cancel, app, srv)
+	fmt.Println("Signal interrupt")
+	stop(logger, cancel, srv)
 }
 
-func stop(logger *zap.Logger, cancel context.CancelFunc, app *app.App, srv *server.Server) {
+func stop(logger *zap.Logger, cancel context.CancelFunc, srv *server.Server) {
 	cancel()
-
-	if err := app.Stop(); err != nil {
-		logger.Fatal("Failed to stop app", zap.Error(err))
-	}
-
 	if err := srv.Stop(); err != nil {
 		logger.Fatal("Failed to stop server", zap.Error(err))
 	}
