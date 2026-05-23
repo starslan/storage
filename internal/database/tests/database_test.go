@@ -51,6 +51,7 @@ func TestDB_HandleQuery_ParseError(t *testing.T) {
 			getFn: func(context.Context, string) (string, error) { return "", nil },
 			delFn: func(context.Context, string) error { return nil },
 		},
+		nil,
 	)
 
 	got := db.HandleQuery(ctx, "BAD")
@@ -74,6 +75,7 @@ func TestDB_HandleQuery_UnknownCommand(t *testing.T) {
 			getFn: func(context.Context, string) (string, error) { return "", nil },
 			delFn: func(context.Context, string) error { return nil },
 		},
+		nil,
 	)
 
 	got := db.HandleQuery(ctx, "UNKNOWN")
@@ -106,6 +108,7 @@ func TestDB_HandleQuery_SetOk(t *testing.T) {
 				return nil
 			},
 		},
+		nil,
 	)
 
 	got := db.HandleQuery(ctx, "SET k v")
@@ -138,6 +141,7 @@ func TestDB_HandleQuery_SetError(t *testing.T) {
 				return nil
 			},
 		},
+		nil,
 	)
 
 	got := db.HandleQuery(ctx, "SET k v")
@@ -166,6 +170,7 @@ func TestDB_HandleQuery_GetFound(t *testing.T) {
 			},
 			delFn: func(_ context.Context, _ string) error { return nil },
 		},
+		nil,
 	)
 
 	got := db.HandleQuery(ctx, "GET k")
@@ -191,6 +196,7 @@ func TestDB_HandleQuery_GetNotFound(t *testing.T) {
 			},
 			delFn: func(_ context.Context, _ string) error { return nil },
 		},
+		nil,
 	)
 
 	got := db.HandleQuery(ctx, "GET missing")
@@ -216,6 +222,7 @@ func TestDB_HandleQuery_GetError(t *testing.T) {
 			},
 			delFn: func(_ context.Context, _ string) error { return nil },
 		},
+		nil,
 	)
 
 	got := db.HandleQuery(ctx, "GET k")
@@ -243,6 +250,7 @@ func TestDB_HandleQuery_DelOk(t *testing.T) {
 				return nil
 			},
 		},
+		nil,
 	)
 
 	got := db.HandleQuery(ctx, "DEL k")
@@ -271,6 +279,7 @@ func TestDB_HandleQuery_DelError(t *testing.T) {
 				return errors.New("delete failed")
 			},
 		},
+		nil,
 	)
 
 	got := db.HandleQuery(ctx, "DEL k")

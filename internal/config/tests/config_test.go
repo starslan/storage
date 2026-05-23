@@ -97,3 +97,49 @@ func TestApplyArguments(t *testing.T) {
 		t.Errorf("unexpected network config: %+v", cfg.Network)
 	}
 }
+
+func TestLoadConfig_WALOverride(t *testing.T) {
+	tmpFile, err := os.CreateTemp("", "config-*.yaml")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Remove(tmpFile.Name()) }()
+
+	yaml := `
+wal:
+  enable: true
+  flushing_batch_size: 50
+  flushing_batch_timeout: "200ms"
+  max_segment_size: "2MB"
+  data_directory: "/tmp/wal"
+`
+	_, _ = tmpFile.Write([]byte(yaml))
+	_ = tmpFile.Close()
+
+	cfg, err := config.LoadConfig(tmpFile.Name())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	wal := cfg.WALConfig
+
+	if wal.Enable != true {
+		t.Errorf("Enable not applied")
+	}
+
+	if wal.BatchSize != 50 {
+		t.Errorf("BatchSize not applied")
+	}
+
+	if wal.BatchTimeout != "200ms" {
+		t.Errorf("batchTimeout not applied")
+	}
+
+	if wal.MaxSegmentSize != "2MB" {
+		t.Errorf("maxSegmentSize not applied")
+	}
+
+	if wal.DataDirectory != "/tmp/wal" {
+		t.Errorf("DataDirectory not applied")
+	}
+}

@@ -16,9 +16,12 @@ import (
 )
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	interruptCh := make(chan os.Signal, 1)
+	signal.Notify(interruptCh, syscall.SIGINT, syscall.SIGTERM)
+	defer close(interruptCh)
 
 	cfg, err := config.LoadConfig("config.yaml")
 	if err != nil {
@@ -38,14 +41,32 @@ func main() {
 		logger.Fatal("Failed to start application", zap.Error(err))
 	}
 
+	err = app.Start(ctx)
+	if err != nil {
+		logger.Fatal("Failed to start application", zap.Error(err))
+	}
+
 	srv, err := server.NewServer(app, cfg.Network)
 	if err != nil {
 		logger.Fatal("Failed to create new server", zap.Error(err))
 	}
 
-	if err := srv.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
-		logger.Fatal("Failed to start server", zap.Error(err))
-	}
+	go func() {
+		if err := srv.Start(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			logger.Fatal("Failed to start server", zap.Error(err))
+		}
+	}()
 
-	_ = srv.Stop()
+	fmt.Println("Server started")
+
+	<-interruptCh
+	fmt.Println("Signal interrupt")
+	stop(logger, cancel, srv)
+}
+
+func stop(logger *zap.Logger, cancel context.CancelFunc, srv *server.Server) {
+	cancel()
+	if err := srv.Stop(); err != nil {
+		logger.Fatal("Failed to stop server", zap.Error(err))
+	}
 }

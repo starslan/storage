@@ -2,11 +2,17 @@ engine:
   type: "in_memory"
 network:
   address: "127.0.0.1:3223"
-  max_connections: 10
+  max_connections: 100
   max_message_size: "4KB"
-  idle_timeout: "5m"
+  idle_timeout: "15m"
 logging:
   level: "info"
   output: "log/db.log"
 parser:
   max_query_length: 300
+wal:
+  enable: true
+  flushing_batch_size: 100
+  flushing_batch_timeout: "500ms"
+  max_segment_size: "10KB"
+  data_directory: "data/wal/"

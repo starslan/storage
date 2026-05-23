@@ -9,10 +9,11 @@ import (
 )
 
 type Config struct {
-	Network NetworkConfig `yaml:"network"`
-	Engine  EngineConfig  `yaml:"engine"`
-	Parser  ParserConfig  `yaml:"parse"`
-	Logger  LoggerConfig  `yaml:"logging"`
+	Network   NetworkConfig `yaml:"network"`
+	Engine    EngineConfig  `yaml:"engine"`
+	Parser    ParserConfig  `yaml:"parse"`
+	Logger    LoggerConfig  `yaml:"logging"`
+	WALConfig WALConfig     `yaml:"wal"`
 }
 
 type NetworkConfig struct {
@@ -75,4 +76,12 @@ func ApplyArguments(cfg *Config) {
 	if *idleTimeout != "" {
 		cfg.Network.IdleTimeout = *idleTimeout
 	}
+}
+
+type WALConfig struct {
+	Enable         bool   `yaml:"enable" default:"false"`
+	BatchSize      int    `yaml:"flushing_batch_size" default:"20"`
+	BatchTimeout   string `yaml:"flushing_batch_timeout" default:"100ms"`
+	MaxSegmentSize string `yaml:"max_segment_size" default:"1MB"`
+	DataDirectory  string `yaml:"data_directory" default:"./data/wal"`
 }
