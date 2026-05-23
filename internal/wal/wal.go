@@ -80,22 +80,7 @@ func (w *WAL) Start(replay func(string) error) error {
 
 func (w *WAL) startWorker() {
 	ticker := time.NewTicker(w.batchTimeout)
-	defer func() {
-		needRestart := false
-		if r := recover(); r != nil {
-			w.logger.Warn("recovered from panic", zap.String("stack", string(debug.Stack())))
-			needRestart = true
-		}
-		ticker.Stop()
-		w.flush()
-		if !needRestart {
-			close(w.worker.closeDoneCh)
-			return
-		}
-
-		go w.startWorker()
-
-	}()
+	defer w.handleWorkerExit(ticker)
 
 	for {
 		select {
@@ -118,6 +103,25 @@ func (w *WAL) startWorker() {
 			}
 		}
 	}
+}
+
+func (w *WAL) handleWorkerExit(ticker *time.Ticker) {
+	needRestart := false
+
+	if r := recover(); r != nil {
+		w.logger.Warn("recovered from panic", zap.String("stack", string(debug.Stack())))
+		needRestart = true
+	}
+
+	ticker.Stop()
+	w.flush()
+
+	if !needRestart {
+		close(w.worker.closeDoneCh)
+		return
+	}
+
+	go w.startWorker()
 }
 
 func (w *WAL) Stop() {
