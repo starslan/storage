@@ -9,11 +9,12 @@ import (
 )
 
 type Config struct {
-	Network   NetworkConfig `yaml:"network"`
-	Engine    EngineConfig  `yaml:"engine"`
-	Parser    ParserConfig  `yaml:"parse"`
-	Logger    LoggerConfig  `yaml:"logging"`
-	WALConfig WALConfig     `yaml:"wal"`
+	Network       NetworkConfig `yaml:"network"`
+	Engine        EngineConfig  `yaml:"engine"`
+	Parser        ParserConfig  `yaml:"parse"`
+	Logger        LoggerConfig  `yaml:"logging"`
+	WALConfig     WALConfig     `yaml:"wal"`
+	ReplicaConfig ReplicaConfig `yaml:"replication"`
 }
 
 type NetworkConfig struct {
@@ -84,4 +85,10 @@ type WALConfig struct {
 	BatchTimeout   string `yaml:"flushing_batch_timeout" default:"100ms"`
 	MaxSegmentSize string `yaml:"max_segment_size" default:"1MB"`
 	DataDirectory  string `yaml:"data_directory" default:"./data/wal"`
+}
+
+type ReplicaConfig struct {
+	ReplicaType  string `yaml:"replica_type" default:"master"`
+	MasterAddr   string `yaml:"master_addr" default:"127.0.0.1:3223"`
+	SyncInterval string `yaml:"sync_interval" default:"1s"`
 }
